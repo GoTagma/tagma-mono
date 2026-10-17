@@ -726,6 +726,11 @@
       "id": "s3-l3-downstream-collection-outcome-contrast",
       "path": "architecture/quality/evidence/s3-l3-verify6-collection-outcome-first-observation.json",
       "sha256": "978ca6903ffc182b3978fe7517d34e901198b35f475defdc0602c174e13e838f"
+    },
+    {
+      "id": "s3-l3-absence-fixture-controlled-fault-composition",
+      "path": "architecture/quality/evidence/s3-l3-verify7-absence-fixture-first-observation.json",
+      "sha256": "6afb09a16adba600faa742d9e4f68fb4cefb2ac13c84e7615633cea3ae759e8b"
     }
   ],
   "issues": [
@@ -8480,6 +8485,103 @@
       "realTestSelectors": [],
       "contract": "Typed nonemptiness can prove inequality to matching-kind emptiness, never substantive content. Reject wrong kind/path/pointer, empty normal predicates, nonempty/scalar controlled values and structural-only core roles. Require actual successful execution and actual controlled fault.",
       "claimLimit": "Independent probe isolates owning contrast gap, not every generated planning error or sole cause. Original tester-stopped round remains failed; zero business execution or publication. Fresh original S3-L3 still required."
+    },
+    {
+      "id": "CSR-0057",
+      "lineage": [
+        "CSR-0014",
+        "CSR-0025",
+        "CSR-0026",
+        "CSR-0038",
+        "CSR-0041",
+        "CSR-0049",
+        "CSR-0051",
+        "CSR-0054",
+        "CSR-0055",
+        "CSR-0056"
+      ],
+      "title": "Compose required pre-production absence with controlled replacement of genuinely generated artifacts",
+      "category": "trial-evidence-contract",
+      "mechanism": "distinguish-null-absence-fixtures-from-original-source-bytes",
+      "observationVerified": "verified",
+      "causeConfirmed": "confirmed",
+      "firstEvidence": {
+        "sourceId": "s3-l3-absence-fixture-controlled-fault-composition",
+        "path": "architecture/quality/evidence/s3-l3-verify7-absence-fixture-first-observation.json",
+        "sha256": "6afb09a16adba600faa742d9e4f68fb4cefb2ac13c84e7615633cea3ae759e8b",
+        "sourceRevision": "a7f936a0cad03eb73ed8fb8e95f5cc9a733b8462",
+        "round": "S3-L3-verify7-original-round-1",
+        "acceptancePolicy": "Natural no-plan pause remains failed. Independent gap is not claimed sole cause of generated errors.29 actual plan-tool rows/no commit calls; signed telemetry unavailable."
+      },
+      "history": [
+        {
+          "kind": "five-full-host-plugin-sdk-tests-red",
+          "evidencePath": "architecture/quality/evidence/s3-l3-absence-fixture-first-red.txt",
+          "evidenceSha256": "71db583454523b2ccbaed4fdad56ae20a26beeace781543947c6cb40f8232f95",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "five-tests111-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-absence-fixture-green.txt",
+          "evidenceSha256": "359ca6a9e63161684a23f33b1753b924aad53f5ad68fa392d32512e1a808f278",
+          "liveAcceptance": false
+        },
+        {
+          "kind": "nine-related-files69-tests879-assertions-green",
+          "evidencePath": "architecture/quality/evidence/s3-l3-absence-fixture-related-green.txt",
+          "evidenceSha256": "d594a3777fdf7940547d182342d4113134b0b80d69096d71ffb1212159327768",
+          "liveAcceptance": false
+        }
+      ],
+      "fixes": [
+        {
+          "summary": "Shared Host/generated Plugin original-source fixture check protects every nonnull string, including empty text; content:null remains pre-production absence and may coexist with a generated artifact replacement after successful production."
+        },
+        {
+          "summary": "Preserve required generatedInputPaths/source witnesses, exact same fixtures/environment, artifact ownership/dependency, control/support exclusions, actual fresh producer and signed runtime fault evidence, independent core content and all budgets. Cache52 to53 invalidates old admission semantics; plan12 and generated-input absence/freshness semantics unchanged."
+        }
+      ],
+      "status": "full-local-qualified-live-S3-L3-verification-required",
+      "regressions": [
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "absence fixture Host admission composes fresh source witnesses with controlled replacement while protecting original bytes",
+          "namePattern": "^absence fixture Host admission composes fresh source witnesses with controlled replacement while protecting original bytes$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "absence fixture real Plugin validates fresh generated source and retains original fixture and commit fences",
+          "namePattern": "^absence fixture real Plugin validates fresh generated source and retains original fixture and commit fences$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "actual isolated Trial preserves array generated source with absence fixture and Host replacement",
+          "namePattern": "^actual isolated Trial preserves array generated source with absence fixture and Host replacement$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "actual isolated Trial preserves object generated source with absence fixture and Host replacement",
+          "namePattern": "^actual isolated Trial preserves object generated source with absence fixture and Host replacement$",
+          "expectedTests": 1
+        },
+        {
+          "cwd": "apps/editor",
+          "file": "tests/chat-trial-json-collection.test.ts",
+          "fullName": "absence fixture cannot authorize replacement without a successfully produced artifact",
+          "namePattern": "^absence fixture cannot authorize replacement without a successfully produced artifact$",
+          "expectedTests": 1
+        }
+      ],
+      "realTestSelectors": [],
+      "contract": "Absence is not original source content, and permits no manufactured producer result. Normal/source-provenance and controlled empty-data evidence must compose while all nonnull original fixtures stay protected. Missing producer artifact stops the failed positive baseline before dependent fault probes.",
+      "claimLimit": "No fresh live acceptance. Postfix negative test initially expected a second case, then corrected to the stronger existing positive-baseline stop policy with actual producer stdout/SHA and no fault run. No production relaxation for that correction. Still8/12."
     }
   ],
   "historicalCatalog": "architecture/quality/known-issues.json",

@@ -1479,7 +1479,7 @@ const findingSchema = tool.schema.object({
 const faultSchema = tool.schema.union([
   tool.schema.object({ type: tool.schema.literal("task-timeout"), taskId: tool.schema.string(), timeoutMs: tool.schema.number().int().min(1).max(5000) }),
   tool.schema.object({ type: tool.schema.literal("task-exit"), taskId: tool.schema.string(), exitCode: tool.schema.number().int().min(1).max(125) }),
-  tool.schema.object({ type: tool.schema.literal("artifact-replace"), producerTaskId: tool.schema.string(), consumerTaskId: tool.schema.string(), path: tool.schema.string(), content: tool.schema.string().max(65536) }),
+  tool.schema.object({ type: tool.schema.literal("artifact-replace"), producerTaskId: tool.schema.string(), consumerTaskId: tool.schema.string(), path: tool.schema.string(), content: tool.schema.string().max(65536) }).describe("Replace only an actual newly produced artifact after its successful producer and before its downstream consumer. A fixture with content:null establishes initial absence and may name this generated path; any string fixture, including empty text, remains protected original source. Keep required generatedInputPaths/source witnesses, ownership and runtime fault evidence."),
 ]);
 const evidenceSchema = tool.schema.union([
   tool.schema.object({ type: tool.schema.literal("source-preservation"), preservationExpectationIndex: tool.schema.number().int().min(0).max(31) }),

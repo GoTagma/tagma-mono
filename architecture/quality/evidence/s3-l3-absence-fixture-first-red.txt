@@ -1,0 +1,113 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-json-collection.test.ts:
+874 | test('absence fixture Host admission composes fresh source witnesses with controlled replacement while protecting original bytes', () => {
+875 |   const rules = createTrialResilienceRules();
+876 |   for (const kind of ['array', 'object'] as const) {
+877 |     const h = absenceCollectionFixture(kind);
+878 |     const parsed = parseChatPipelineTrialPlan(h.plan);
+879 |     expect(inspectTrialEvidence(['empty-result'], parsed, h.config, h.coordinates, true)).toEqual({
+                                                                                                ^
+error: expect(received).toEqual(expected)
+
+  {
+-   "issues": [],
+-   "missing": [],
++   "issues": [
++     {
++       "caseId": "empty",
++       "code": "source-fixture-replacement-forbidden",
++       "field": "fault.path",
++       "message": "Fault injection cannot replace an original source fixture.",
++       "repairScope": "diagnostic-only",
++       "type": "empty-result",
++     },
++   ],
++   "missing": [
++     "empty-result",
++   ],
+  }
+
+- Expected  - 2
++ Received  + 13
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:879:91)
+(fail) absence fixture Host admission composes fresh source witnesses with controlled replacement while protecting original bytes [16.73ms]
+2249 |   const diagnostic = {
+2250 |     message: 'Required structured Trial evidence is incomplete.',
+2251 |     missingEvidence: inspection.missing,
+2252 |     issues: inspection.issues,
+2253 |   };
+2254 |   const error = new Error(JSON.stringify(diagnostic));
+                           ^
+error: {"message":"Required structured Trial evidence is incomplete.","missingEvidence":["empty-result"],"issues":[{"type":"empty-result","caseId":"empty","code":"source-fixture-replacement-forbidden","field":"fault.path","message":"Fault injection cannot replace an original source fixture.","repairScope":"diagnostic-only"}]}
+ trialPlanDiagnostic: {
+  message: "Required structured Trial evidence is incomplete.",
+  missingEvidence: [ "empty-result" ],
+  issues: [
+    [Object ...]
+  ],
+},
+
+      at incompleteTrialEvidenceError (/tmp/tagma-coll-kxLkLq/collection-tool.mjs:2254:21)
+      at assertExecutableTrialPlan (/tmp/tagma-coll-kxLkLq/collection-tool.mjs:2580:13)
+      at <anonymous> (/tmp/tagma-coll-kxLkLq/collection-tool.mjs:2685:22)
+      at withTrialPlanDraftLock (/tmp/tagma-coll-kxLkLq/collection-tool.mjs:1786:12)
+      at execute (/tmp/tagma-coll-kxLkLq/collection-tool.mjs:2849:12)
+      at call (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:952:17)
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:966:36)
+(fail) absence fixture real Plugin validates fresh generated source and retains original fixture and commit fences [48.58ms]
+1056 |     'actual isolated Trial preserves ' +
+1057 |       kind +
+1058 |       ' generated source with absence fixture and Host replacement',
+1059 |     async () => {
+1060 |       await withAbsenceCollectionTrial(kind, true, (_h, result, controlRoot) => {
+1061 |         expect(result.ran).toBe(true);
+                                  ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1061:28)
+      at withAbsenceCollectionTrial (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1043:5)
+      at async <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1060:13)
+(fail) actual isolated Trial preserves array generated source with absence fixture and Host replacement [29.90ms]
+1056 |     'actual isolated Trial preserves ' +
+1057 |       kind +
+1058 |       ' generated source with absence fixture and Host replacement',
+1059 |     async () => {
+1060 |       await withAbsenceCollectionTrial(kind, true, (_h, result, controlRoot) => {
+1061 |         expect(result.ran).toBe(true);
+                                  ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1061:28)
+      at withAbsenceCollectionTrial (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1043:5)
+      at async <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1060:13)
+(fail) actual isolated Trial preserves object generated source with absence fixture and Host replacement [10.36ms]
+1094 |     },
+1095 |   );
+1096 | 
+1097 | test('absence fixture cannot authorize replacement without a successfully produced artifact', async () => {
+1098 |   await withAbsenceCollectionTrial('array', false, (_h, result, controlRoot) => {
+1099 |     expect(result.ran).toBe(true);
+                              ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1099:24)
+      at withAbsenceCollectionTrial (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1043:5)
+      at async <anonymous> (/workspace/tagma-mono/apps/editor/tests/chat-trial-json-collection.test.ts:1098:9)
+(fail) absence fixture cannot authorize replacement without a successfully produced artifact [10.62ms]
+
+ 0 pass
+ 9 filtered out
+ 5 fail
+ 4 expect() calls
+Ran 5 tests across 1 file. [253.00ms]

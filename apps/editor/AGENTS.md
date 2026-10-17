@@ -2441,3 +2441,10 @@
   confer no contrast. This never qualifies core content or replaces actual successful execution
   and Host fault evidence. Shared Host/Plugin semantics use cache protocol52; plan12 and all
   generated-input, source ownership, fixture, freshness and finite-budget contracts stay intact.
+
+- Controlled artifact replacement may coexist with a content:null fixture: null still means
+  absence before production, never original source bytes or permission to seed a result. Preserve
+  required generatedInputPaths/source witnesses, producer ownership/dependency and actual
+  successful fresh production before Host injection. Every nonnull string fixture, including
+  empty text, remains protected; control/support paths remain forbidden. Shared Host/Plugin
+  admission uses cache53, plan12 and generated-input freshness semantics unchanged.

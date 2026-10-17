@@ -1,0 +1,97 @@
+{
+  "case": "S3-L3",
+  "attempt": "s3-l3-verify7",
+  "accepted": false,
+  "sourceRevision": "a7f936a0cad03eb73ed8fb8e95f5cc9a733b8462",
+  "exactCi": {
+    "run": 38986557304,
+    "all4RequiredJobs": "success",
+    "collectionFile9TestsAll3Os": "success"
+  },
+  "operationId": "operation-8587a468-f52d-455b-978d-401a9456d496",
+  "stageId": "770cc7a7-f51c-460e-83e6-9f57a797b8bb",
+  "yamlSha1": "43a99b06f9a09664ec5cf9ba44e0f8aa602a4ffa",
+  "originalRequests": 1,
+  "actionClarifications": 0,
+  "explicitRetry": false,
+  "testerStopped": false,
+  "outcome": "natural trial_verification_paused/user_retry; no trial plan written",
+  "hostPlanningOpportunities": 2,
+  "actualNativePlanToolCalls": 29,
+  "observedCommitCalls": 0,
+  "signedPlanTelemetry": "unavailable; not an authenticated zero counter",
+  "actualPipelineRuns": 0,
+  "actualBusinessTasks": 0,
+  "independentSemanticReviews": 0,
+  "published": false,
+  "architecture": "4 native OpenCode tasks, schedule trigger plus target example configuration; no ordinary HTTP command. Actual mandatory environment/digest system delivery remains present.",
+  "generatedErrors": "Skeleton missing write permission, missing positive generated-source witnesses, invalid coverage declarations and incomplete negative fixture controls were correctly rejected. Final source-text relation requirements remained unfulfilled. Do not attribute the full planning pause solely to the independent gap below.",
+  "independentHostCounterexample": {
+    "scope": "Independent Host controlled-fault admission counterexample. Removal fixture null provides no original source bytes; only actual newly produced artifact is replaced. No model/network/business execution. Preserve nonnull original-source negatives.",
+    "modes": [
+      {
+        "mode": "no-generated-file-fixture-control",
+        "result": {
+          "missing": [],
+          "issues": []
+        }
+      },
+      {
+        "mode": "absence-fixture",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "source-fixture-replacement-forbidden",
+              "field": "fault.path",
+              "message": "Fault injection cannot replace an original source fixture.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      },
+      {
+        "mode": "empty-original-source-negative",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "source-fixture-replacement-forbidden",
+              "field": "fault.path",
+              "message": "Fault injection cannot replace an original source fixture.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      },
+      {
+        "mode": "original-source-negative",
+        "result": {
+          "missing": [
+            "empty-result"
+          ],
+          "issues": [
+            {
+              "type": "empty-result",
+              "caseId": "empty",
+              "code": "source-fixture-replacement-forbidden",
+              "field": "fault.path",
+              "message": "Fault injection cannot replace an original source fixture.",
+              "repairScope": "diagnostic-only"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "nextRepair": "Candidate CSR57: treat fixture content:null as required absence before production, not original source bytes. Allow controlled replacement only after existing ownership/dependency/fresh artifact/runtime evidence checks. Preserve nonnull original source fixture prohibition including empty strings. Keep generatedInputPaths freshness semantics/plan12 and increment cache for changed verdict admission.",
+  "claimLimit": "No source/fixture truth or runtime admission claim from probe alone; confirm full Host/real Plugin/actual SDK fresh-source-plus-controlled-fault regression before source correction. No live acceptance, still8/12; S4locked."
+}

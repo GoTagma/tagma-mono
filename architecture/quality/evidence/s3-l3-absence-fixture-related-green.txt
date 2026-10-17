@@ -1,0 +1,505 @@
+
+::group::tests/chat-pipeline-trial-cache.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-pipeline-trial-cache.test.ts:
+(pass) chat pipeline trial cache protocol > cache version is pinned [0.04ms]
+
+ 1 pass
+ 0 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [10.00ms]
+::endgroup::
+
+::group::tests/chat-trial-evidence-execution.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-evidence-execution.test.ts:
+00:51:26.018 [pipeline] start "Structured evidence" run_id=run_mvbol3um_43fe815d410a
+00:51:26.025 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:26.049 [task:flow.source] success (0.0s)
+00:51:26.049 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:26.070 [task:flow.report] success (0.0s)
+00:51:26.070 [pipeline] completed "Structured evidence"
+00:51:26.070 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:26.070 [pipeline] Duration: 0.1s
+00:51:26.070 [pipeline] Log: /tmp/tagma-evidence-trial-oEkkrL/.tagma/.chat-staging/cfc1ccb3-5152-4ab4-a3ed-e5c2fedff8bb/.trial-cases/normal-PtKwns/workspace/.tagma/logs/run_mvbol3um_43fe815d410a/pipeline.log
+00:51:26.206 [pipeline] start "Structured evidence" run_id=run_mvbol3zx_8b59692113a8
+00:51:26.207 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:26.310 [task:flow.source] ERROR: timeout exit=-1 duration=0.1s
+00:51:26.310 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:26.327 [task:flow.report] success (0.0s)
+00:51:26.328 [pipeline] failed "Structured evidence"
+00:51:26.328 [pipeline] Total: 2 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+00:51:26.328 [pipeline] Duration: 0.1s
+00:51:26.328 [pipeline] Log: /tmp/tagma-evidence-trial-oEkkrL/.tagma/.chat-staging/cfc1ccb3-5152-4ab4-a3ed-e5c2fedff8bb/.trial-cases/fault-RSg8XK/workspace/.tagma/logs/run_mvbol3zx_8b59692113a8/pipeline.log
+00:51:26.583 [pipeline] start "Structured evidence" run_id=run_mvbol4af_9aee1c632727
+00:51:26.584 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:26.686 [task:flow.source] ERROR: timeout exit=-1 duration=0.1s
+00:51:26.686 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:26.704 [task:flow.report] success (0.0s)
+00:51:26.705 [pipeline] failed "Structured evidence"
+00:51:26.705 [pipeline] Total: 2 | Success: 1 | Failed: 0 | Skipped: 0 | Timeout: 1 | Blocked: 0
+00:51:26.705 [pipeline] Duration: 0.1s
+00:51:26.705 [pipeline] Log: /tmp/tagma-evidence-trial-oEkkrL/.tagma/.chat-staging/cfc1ccb3-5152-4ab4-a3ed-e5c2fedff8bb/.trial-cases/fault-ICRAAm/workspace/.tagma/logs/run_mvbol4af_9aee1c632727/pipeline.log
+(pass) actual isolated Trial observes timeout-recovery, preserves inputs and pins intent [1071.72ms]
+00:51:27.036 [pipeline] start "Structured evidence" run_id=run_mvbol4n0_77b464c37a88
+00:51:27.037 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:27.056 [task:flow.source] success (0.0s)
+00:51:27.056 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:27.074 [task:flow.report] success (0.0s)
+00:51:27.075 [pipeline] completed "Structured evidence"
+00:51:27.075 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:27.075 [pipeline] Duration: 0.0s
+00:51:27.075 [pipeline] Log: /tmp/tagma-evidence-trial-p61Jd9/.tagma/.chat-staging/c4db6690-72f7-42d1-99a1-4e9c498e8d50/.trial-cases/normal-3J5n2C/workspace/.tagma/logs/run_mvbol4n0_77b464c37a88/pipeline.log
+00:51:27.211 [pipeline] start "Structured evidence" run_id=run_mvbol4ru_478789cfc35c
+00:51:27.212 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:27.220 [task:flow.source] ERROR: failed exit=7 duration=0.0s
+00:51:27.221 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:27.262 [task:flow.report] success (0.0s)
+00:51:27.263 [pipeline] failed "Structured evidence"
+00:51:27.263 [pipeline] Total: 2 | Success: 1 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:27.263 [pipeline] Duration: 0.1s
+00:51:27.263 [pipeline] Log: /tmp/tagma-evidence-trial-p61Jd9/.tagma/.chat-staging/c4db6690-72f7-42d1-99a1-4e9c498e8d50/.trial-cases/fault-f7qc8Y/workspace/.tagma/logs/run_mvbol4ru_478789cfc35c/pipeline.log
+00:51:27.541 [pipeline] start "Structured evidence" run_id=run_mvbol511_18c15c8f93a4
+00:51:27.542 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:27.544 [task:flow.source] ERROR: failed exit=7 duration=0.0s
+00:51:27.544 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:27.565 [task:flow.report] success (0.0s)
+00:51:27.565 [pipeline] failed "Structured evidence"
+00:51:27.565 [pipeline] Total: 2 | Success: 1 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:27.565 [pipeline] Duration: 0.0s
+00:51:27.565 [pipeline] Log: /tmp/tagma-evidence-trial-p61Jd9/.tagma/.chat-staging/c4db6690-72f7-42d1-99a1-4e9c498e8d50/.trial-cases/fault-76s7VC/workspace/.tagma/logs/run_mvbol511_18c15c8f93a4/pipeline.log
+(pass) actual isolated Trial observes failure-recovery, preserves inputs and pins intent [874.51ms]
+00:51:27.954 [pipeline] start "Structured evidence" run_id=run_mvbol5ch_a8bbeba94c44
+00:51:27.955 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:27.981 [task:flow.source] success (0.0s)
+00:51:27.981 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:28.002 [task:flow.report] success (0.0s)
+00:51:28.002 [pipeline] completed "Structured evidence"
+00:51:28.002 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:28.002 [pipeline] Duration: 0.0s
+00:51:28.002 [pipeline] Log: /tmp/tagma-evidence-trial-iEFCOp/.tagma/.chat-staging/3df47fa4-cc0e-4d46-b8a6-4d14ab17ec4f/.trial-cases/normal-zf1Sep/workspace/.tagma/logs/run_mvbol5ch_a8bbeba94c44/pipeline.log
+00:51:28.135 [pipeline] start "Structured evidence" run_id=run_mvbol5hj_de4b27259c3b
+00:51:28.136 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:28.153 [task:flow.source] success (0.0s)
+00:51:28.153 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:28.174 [task:flow.report] success (0.0s)
+00:51:28.174 [pipeline] completed "Structured evidence"
+00:51:28.174 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:28.174 [pipeline] Duration: 0.0s
+00:51:28.174 [pipeline] Log: /tmp/tagma-evidence-trial-iEFCOp/.tagma/.chat-staging/3df47fa4-cc0e-4d46-b8a6-4d14ab17ec4f/.trial-cases/fault-7ZOLHU/workspace/.tagma/logs/run_mvbol5hj_de4b27259c3b/pipeline.log
+00:51:28.445 [pipeline] start "Structured evidence" run_id=run_mvbol5q4_4f281a9bdc0a
+00:51:28.446 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:28.487 [task:flow.source] success (0.0s)
+00:51:28.487 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Audit incomplete\")"]
+00:51:28.514 [task:flow.report] success (0.0s)
+00:51:28.514 [pipeline] completed "Structured evidence"
+00:51:28.514 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:28.514 [pipeline] Duration: 0.1s
+00:51:28.514 [pipeline] Log: /tmp/tagma-evidence-trial-iEFCOp/.tagma/.chat-staging/3df47fa4-cc0e-4d46-b8a6-4d14ab17ec4f/.trial-cases/fault-Mx4nGR/workspace/.tagma/logs/run_mvbol5q4_4f281a9bdc0a/pipeline.log
+(pass) actual isolated Trial observes empty-result, preserves inputs and pins intent [940.88ms]
+00:51:28.896 [pipeline] start "Structured evidence" run_id=run_mvbol62o_ec09e3783996
+00:51:28.896 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:28.914 [task:flow.source] success (0.0s)
+00:51:28.914 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Source could not be located.\")"]
+00:51:28.934 [task:flow.report] success (0.0s)
+00:51:28.934 [pipeline] completed "Structured evidence"
+00:51:28.934 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:28.934 [pipeline] Duration: 0.0s
+00:51:28.934 [pipeline] Log: /tmp/tagma-evidence-trial-j8LFMC/.tagma/.chat-staging/159d4ca4-1725-4883-8ef3-4bdbf1168d39/.trial-cases/normal-29VDro/workspace/.tagma/logs/run_mvbol62o_ec09e3783996/pipeline.log
+00:51:29.065 [pipeline] start "Structured evidence" run_id=run_mvbol67c_2a013139f3aa
+00:51:29.065 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:29.101 [task:flow.source] success (0.0s)
+00:51:29.101 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Source could not be located.\")"]
+00:51:29.124 [task:flow.report] success (0.0s)
+00:51:29.124 [pipeline] completed "Structured evidence"
+00:51:29.124 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:29.124 [pipeline] Duration: 0.1s
+00:51:29.124 [pipeline] Log: /tmp/tagma-evidence-trial-j8LFMC/.tagma/.chat-staging/159d4ca4-1725-4883-8ef3-4bdbf1168d39/.trial-cases/fault-uUIeKs/workspace/.tagma/logs/run_mvbol67c_2a013139f3aa/pipeline.log
+00:51:29.398 [pipeline] start "Structured evidence" run_id=run_mvbol6gm_4158d6a2fbe4
+00:51:29.399 [task:flow.source] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","require(\"node:fs\").writeFileSync(\"data.json\",JSON.stringify([{span:\"Original span\"}]))"]
+00:51:29.420 [task:flow.source] success (0.0s)
+00:51:29.421 [task:flow.report] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require(\"node:fs\");const data=fs.existsSync(\"data.json\")?JSON.parse(fs.readFileSync(\"data.json\",\"utf8\")):[];const src=fs.readFileSync(\"source.txt\",\"utf8\");fs.writeFileSync(\"report.txt\",data.length&&src.includes(data[0].span)?\"R1\":\"Source could not be located.\")"]
+00:51:29.442 [task:flow.report] success (0.0s)
+00:51:29.442 [pipeline] completed "Structured evidence"
+00:51:29.442 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:29.442 [pipeline] Duration: 0.0s
+00:51:29.442 [pipeline] Log: /tmp/tagma-evidence-trial-j8LFMC/.tagma/.chat-staging/159d4ca4-1725-4883-8ef3-4bdbf1168d39/.trial-cases/fault-APNw8u/workspace/.tagma/logs/run_mvbol6gm_4158d6a2fbe4/pipeline.log
+(pass) actual isolated Trial observes unlocated-source, preserves inputs and pins intent [930.00ms]
+
+ 4 pass
+ 0 fail
+ 60 expect() calls
+Ran 4 tests across 1 file. [3.98s]
+::endgroup::
+
+::group::tests/chat-trial-file-source-text-occurrence.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-file-source-text-occurrence.test.ts:
+(pass) same-repeat relation preserves the exact nonblank STRING including Unicode and JSON-pointer escapes [2.70ms]
+(pass) missing, malformed, empty or non-STRING source values never become a vacuous occurrence [1.78ms]
+(pass) successful status or copied source text without actual owner/dependency results is insufficient [0.88ms]
+(pass) source symlinks and oversized source files are rejected without supplying content [1.78ms]
+(pass) unavailable producer observations and missing actual results cannot use final consumer-authored bytes [0.79ms]
+(pass) normal core accepts dynamic text only with independent concrete source content and explicit mappings [5.39ms]
+(pass) normal relation rejects preseed, missing removal, wrong producer, dependency and artifact ownership [1.38ms]
+(pass) missing artifact ownership feedback identifies a blocked pipeline repair without weakening admission [0.77ms]
+(pass) consumer role feedback corrects direct and transitive plan mappings without artifact authority [1.21ms]
+(pass) reader evaluates each actual source value and cannot reuse the prior repeat literal [1.42ms]
+(pass) generated tool draft/full validators mirror the relation gate without consuming a validation slot [56.96ms]
+00:51:30.123 [pipeline] start "Actual dynamic relation" run_id=run_mvbol70n_27dc8ccb4317
+00:51:30.130 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+00:51:30.161 [task:odd.alpha] success (0.0s)
+00:51:30.162 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:30.182 [task:odd.beta] success (0.0s)
+00:51:30.183 [pipeline] completed "Actual dynamic relation"
+00:51:30.183 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:30.183 [pipeline] Duration: 0.1s
+00:51:30.183 [pipeline] Log: /tmp/tagma-source-relation-3nHtVe/.tagma/.chat-staging/90f84999-5aa4-4441-b5d7-3ef0433f5441/.trial-cases/normal-Dl70Y3/workspace/.tagma/logs/run_mvbol70n_27dc8ccb4317/pipeline.log
+00:51:30.189 [pipeline] start "Actual dynamic relation" run_id=run_mvbol72k_9813ab5dd80e
+00:51:30.190 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+00:51:30.213 [task:odd.alpha] success (0.0s)
+00:51:30.213 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:30.234 [task:odd.beta] success (0.0s)
+00:51:30.235 [pipeline] completed "Actual dynamic relation"
+00:51:30.235 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:30.235 [pipeline] Duration: 0.0s
+00:51:30.235 [pipeline] Log: /tmp/tagma-source-relation-3nHtVe/.tagma/.chat-staging/90f84999-5aa4-4441-b5d7-3ef0433f5441/.trial-cases/normal-Dl70Y3/workspace/.tagma/logs/run_mvbol72k_9813ab5dd80e/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=0, wrongSum=false, mutateSource=false [541.08ms]
+00:51:30.653 [pipeline] start "Actual dynamic relation" run_id=run_mvbol7fg_9cc1ac968523
+00:51:30.655 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+00:51:30.679 [task:odd.alpha] success (0.0s)
+00:51:30.679 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===1?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:30.700 [task:odd.beta] success (0.0s)
+00:51:30.700 [pipeline] completed "Actual dynamic relation"
+00:51:30.700 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:30.700 [pipeline] Duration: 0.0s
+00:51:30.700 [pipeline] Log: /tmp/tagma-source-relation-a6qJXH/.tagma/.chat-staging/bb36134a-3e64-41c6-a63a-188057a95ad5/.trial-cases/normal-pG3vpY/workspace/.tagma/logs/run_mvbol7fg_9cc1ac968523/pipeline.log
+00:51:30.702 [pipeline] start "Actual dynamic relation" run_id=run_mvbol7gt_343a3bc03fa8
+00:51:30.702 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+00:51:30.722 [task:odd.alpha] success (0.0s)
+00:51:30.723 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===1?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:30.749 [task:odd.beta] success (0.0s)
+00:51:30.750 [pipeline] completed "Actual dynamic relation"
+00:51:30.750 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:30.750 [pipeline] Duration: 0.0s
+00:51:30.750 [pipeline] Log: /tmp/tagma-source-relation-a6qJXH/.tagma/.chat-staging/bb36134a-3e64-41c6-a63a-188057a95ad5/.trial-cases/normal-pG3vpY/workspace/.tagma/logs/run_mvbol7gt_343a3bc03fa8/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=1, wrongSum=false, mutateSource=false [516.90ms]
+00:51:31.126 [pipeline] start "Actual dynamic relation" run_id=run_mvbol7sl_62da13509b68
+00:51:31.127 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+00:51:31.156 [task:odd.alpha] success (0.0s)
+00:51:31.156 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===2?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:31.176 [task:odd.beta] success (0.0s)
+00:51:31.177 [pipeline] completed "Actual dynamic relation"
+00:51:31.177 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:31.177 [pipeline] Duration: 0.1s
+00:51:31.177 [pipeline] Log: /tmp/tagma-source-relation-srBjCm/.tagma/.chat-staging/74100ff6-e05c-40eb-9488-e52f38e19ad6/.trial-cases/normal-IOScHk/workspace/.tagma/logs/run_mvbol7sl_62da13509b68/pipeline.log
+00:51:31.178 [pipeline] start "Actual dynamic relation" run_id=run_mvbol7u2_9a6382b2c3d9
+00:51:31.179 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+00:51:31.198 [task:odd.alpha] success (0.0s)
+00:51:31.198 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===2?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:31.224 [task:odd.beta] success (0.0s)
+00:51:31.224 [pipeline] completed "Actual dynamic relation"
+00:51:31.224 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:31.224 [pipeline] Duration: 0.0s
+00:51:31.224 [pipeline] Log: /tmp/tagma-source-relation-srBjCm/.tagma/.chat-staging/74100ff6-e05c-40eb-9488-e52f38e19ad6/.trial-cases/normal-IOScHk/workspace/.tagma/logs/run_mvbol7u2_9a6382b2c3d9/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=2, wrongSum=false, mutateSource=false [466.52ms]
+00:51:31.560 [pipeline] start "Actual dynamic relation" run_id=run_mvbol84n_5b70165ab9c6
+00:51:31.561 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+1,run:n}));"]
+00:51:31.582 [task:odd.alpha] success (0.0s)
+00:51:31.582 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:31.601 [task:odd.beta] success (0.0s)
+00:51:31.601 [pipeline] completed "Actual dynamic relation"
+00:51:31.601 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:31.601 [pipeline] Duration: 0.0s
+00:51:31.601 [pipeline] Log: /tmp/tagma-source-relation-Vl96xM/.tagma/.chat-staging/a1055916-079f-438a-b4eb-55fdfe5f4f99/.trial-cases/normal-iTIYEw/workspace/.tagma/logs/run_mvbol84n_5b70165ab9c6/pipeline.log
+00:51:31.602 [pipeline] start "Actual dynamic relation" run_id=run_mvbol85u_b447391dab64
+00:51:31.603 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+1,run:n}));"]
+00:51:31.619 [task:odd.alpha] success (0.0s)
+00:51:31.619 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:31.638 [task:odd.beta] success (0.0s)
+00:51:31.639 [pipeline] completed "Actual dynamic relation"
+00:51:31.639 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:31.639 [pipeline] Duration: 0.0s
+00:51:31.639 [pipeline] Log: /tmp/tagma-source-relation-Vl96xM/.tagma/.chat-staging/a1055916-079f-438a-b4eb-55fdfe5f4f99/.trial-cases/normal-iTIYEw/workspace/.tagma/logs/run_mvbol85u_b447391dab64/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=0, wrongSum=true, mutateSource=false [416.67ms]
+00:51:31.985 [pipeline] start "Actual dynamic relation" run_id=run_mvbol8gh_f906444661b6
+00:51:31.985 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+00:51:32.010 [task:odd.alpha] success (0.0s)
+00:51:32.011 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));source.text='Consumer forged replacement';fs.writeFileSync('input.json',JSON.stringify(source));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:32.028 [task:odd.beta] success (0.0s)
+00:51:32.029 [pipeline] completed "Actual dynamic relation"
+00:51:32.029 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:32.029 [pipeline] Duration: 0.0s
+00:51:32.029 [pipeline] Log: /tmp/tagma-source-relation-8kSsPb/.tagma/.chat-staging/944cee29-af55-43ac-8a46-d53e061f1d36/.trial-cases/normal-yScq92/workspace/.tagma/logs/run_mvbol8gh_f906444661b6/pipeline.log
+00:51:32.030 [pipeline] start "Actual dynamic relation" run_id=run_mvbol8hq_c0609a6a1ffb
+00:51:32.030 [task:odd.alpha] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');if(fs.existsSync('input.json'))process.exit(2);const n=fs.existsSync('count.txt')?Number(fs.readFileSync('count.txt','utf8'))+1:1;fs.writeFileSync('count.txt',String(n));const operands=JSON.parse(fs.readFileSync('numbers.json','utf8'));fs.writeFileSync('input.json',JSON.stringify({text:'Observed span '+n,total:operands.a+operands.b+0,run:n}));"]
+00:51:32.055 [task:odd.alpha] success (0.0s)
+00:51:32.055 [task:odd.beta] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs');const source=JSON.parse(fs.readFileSync('input.json','utf8'));source.text='Consumer forged replacement';fs.writeFileSync('input.json',JSON.stringify(source));fs.writeFileSync('report.md','# Variable narrative '+source.run+'\\n'+(source.run===0?'heading only':source.text)+'\\nTotal: '+source.total);"]
+00:51:32.074 [task:odd.beta] success (0.0s)
+00:51:32.075 [pipeline] completed "Actual dynamic relation"
+00:51:32.075 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:32.075 [pipeline] Duration: 0.0s
+00:51:32.075 [pipeline] Log: /tmp/tagma-source-relation-8kSsPb/.tagma/.chat-staging/944cee29-af55-43ac-8a46-d53e061f1d36/.trial-cases/normal-yScq92/workspace/.tagma/logs/run_mvbol8hq_c0609a6a1ffb/pipeline.log
+(pass) real command source/report relation is checked in both repeats; wrongRun=0, wrongSum=false, mutateSource=true [438.80ms]
+(pass) non-core source relations reject impossible owners in compiled Host preflight while normal messages stay stable [2.64ms]
+(pass) non-core source relation Plugin preflight exposes bound plan-only correction before one normal commit [21.67ms]
+(pass) non-core source relation invalid Plugin commit still spends exactly one rejection and writes no plan [23.39ms]
+
+ 19 pass
+ 0 fail
+ 202 expect() calls
+Ran 19 tests across 1 file. [2.66s]
+::endgroup::
+
+::group::tests/chat-trial-intent-coverage.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-intent-coverage.test.ts:
+(pass) task json_schema publishes only its data artifact using inherited cwd [3.47ms]
+(pass) structured evidence errors identify the unsupported field and accepted shape [0.52ms]
+(pass) semantic review binds frozen intent without inferring requirements from its words [2.02ms]
+(pass) review requires every disposition, bounded ids and closed fields [0.44ms]
+(pass) typed empty-result contrasts the actual data edge and source relationship [1.71ms]
+(pass) typed unlocated-source contrasts the actual data edge and source relationship [0.48ms]
+(pass) source preservation binds exact fixture bytes without extension assumptions [0.20ms]
+(pass) malformed or non-contrasting data fault bytes are plan errors before execution [0.83ms]
+
+ 8 pass
+ 0 fail
+ 40 expect() calls
+Ran 8 tests across 1 file. [61.00ms]
+::endgroup::
+
+::group::tests/chat-trial-json-collection.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-json-collection.test.ts:
+(pass) JSON collection Host admission supports unknown members without granting core content authority [18.65ms]
+(pass) JSON collection real Plugin preflight and commit preserve explicit kind state and finite counters [48.69ms]
+00:51:32.818 [pipeline] start "Randomized measurement collection" run_id=run_mvbol93h_0263e5f46ccc
+00:51:32.825 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:32.855 [task:measure.sample] success (0.0s)
+00:51:32.856 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:32.877 [task:present.render] success (0.0s)
+00:51:32.878 [pipeline] completed "Randomized measurement collection"
+00:51:32.878 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:32.878 [pipeline] Duration: 0.1s
+00:51:32.878 [pipeline] Log: /tmp/tagma-coll-lSb9jB/.tagma/.chat-staging/683bec50-35a5-4aff-b8c5-b9d13495f78a/.trial-cases/normal-xEKFoz/workspace/.tagma/logs/run_mvbol93h_0263e5f46ccc/pipeline.log
+00:51:33.022 [pipeline] start "Randomized measurement collection" run_id=run_mvbol998_66ae48c4afd3
+00:51:33.022 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:33.047 [task:measure.sample] success (0.0s)
+00:51:33.048 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:33.067 [task:present.render] success (0.0s)
+00:51:33.068 [pipeline] completed "Randomized measurement collection"
+00:51:33.068 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:33.068 [pipeline] Duration: 0.0s
+00:51:33.068 [pipeline] Log: /tmp/tagma-coll-lSb9jB/.tagma/.chat-staging/683bec50-35a5-4aff-b8c5-b9d13495f78a/.trial-cases/empty-j12mOu/workspace/.tagma/logs/run_mvbol998_66ae48c4afd3/pipeline.log
+(pass) actual isolated Trial contrasts randomized array collection with Host-injected empty result [634.37ms]
+00:51:33.409 [pipeline] start "Randomized measurement collection" run_id=run_mvbol9k1_d635f58a7d02
+00:51:33.410 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:33.435 [task:measure.sample] success (0.0s)
+00:51:33.436 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:33.454 [task:present.render] success (0.0s)
+00:51:33.454 [pipeline] completed "Randomized measurement collection"
+00:51:33.454 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:33.454 [pipeline] Duration: 0.0s
+00:51:33.454 [pipeline] Log: /tmp/tagma-coll-Vi2P3J/.tagma/.chat-staging/66f030da-d61d-497b-89c9-527a2a54c7c3/.trial-cases/normal-UypekW/workspace/.tagma/logs/run_mvbol9k1_d635f58a7d02/pipeline.log
+00:51:33.587 [pipeline] start "Randomized measurement collection" run_id=run_mvbol9oy_c8a1f9c1263d
+00:51:33.587 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:33.627 [task:measure.sample] success (0.0s)
+00:51:33.627 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:33.649 [task:present.render] success (0.0s)
+00:51:33.650 [pipeline] completed "Randomized measurement collection"
+00:51:33.650 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:33.650 [pipeline] Duration: 0.1s
+00:51:33.650 [pipeline] Log: /tmp/tagma-coll-Vi2P3J/.tagma/.chat-staging/66f030da-d61d-497b-89c9-527a2a54c7c3/.trial-cases/empty-BCYVoL/workspace/.tagma/logs/run_mvbol9oy_c8a1f9c1263d/pipeline.log
+(pass) actual isolated Trial contrasts randomized object collection with Host-injected empty result [579.85ms]
+(pass) JSON collection runtime rejects wrong types missing pointers malformed JSON and oversized reads [3.21ms]
+(pass) downstream collection Host contrast requires exact kind pointer path and independent core content [11.43ms]
+(pass) downstream collection real Plugin contrast preserves core authority and finite commit counters [59.52ms]
+00:51:34.077 [pipeline] start "Randomized measurement collection" run_id=run_mvbola2l_680841c4b188
+00:51:34.078 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:34.102 [task:measure.sample] success (0.0s)
+00:51:34.102 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:34.133 [task:present.render] success (0.0s)
+00:51:34.133 [pipeline] completed "Randomized measurement collection"
+00:51:34.133 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:34.133 [pipeline] Duration: 0.1s
+00:51:34.133 [pipeline] Log: /tmp/tagma-coll-mae4zq/.tagma/.chat-staging/04b4aed0-cb55-4ceb-8a56-cd34d8011c86/.trial-cases/normal-YMKhuC/workspace/.tagma/logs/run_mvbola2l_680841c4b188/pipeline.log
+00:51:34.267 [pipeline] start "Randomized measurement collection" run_id=run_mvbola7v_d964e53ccd45
+00:51:34.268 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:34.294 [task:measure.sample] success (0.0s)
+00:51:34.295 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:34.317 [task:present.render] success (0.0s)
+00:51:34.318 [pipeline] completed "Randomized measurement collection"
+00:51:34.318 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:34.318 [pipeline] Duration: 0.1s
+00:51:34.318 [pipeline] Log: /tmp/tagma-coll-mae4zq/.tagma/.chat-staging/04b4aed0-cb55-4ceb-8a56-cd34d8011c86/.trial-cases/empty-CQTb4F/workspace/.tagma/logs/run_mvbola7v_d964e53ccd45/pipeline.log
+(pass) actual isolated Trial contrasts randomized array downstream collection with Host-injected empty result [595.86ms]
+00:51:34.673 [pipeline] start "Randomized measurement collection" run_id=run_mvbolaj5_c8294679127a
+00:51:34.674 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:34.699 [task:measure.sample] success (0.0s)
+00:51:34.699 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:34.720 [task:present.render] success (0.0s)
+00:51:34.721 [pipeline] completed "Randomized measurement collection"
+00:51:34.721 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:34.721 [pipeline] Duration: 0.0s
+00:51:34.721 [pipeline] Log: /tmp/tagma-coll-ziIg9b/.tagma/.chat-staging/10728628-db0d-4005-b6a6-f2a8ab474cd1/.trial-cases/normal-Zv1Bis/workspace/.tagma/logs/run_mvbolaj5_c8294679127a/pipeline.log
+00:51:34.860 [pipeline] start "Randomized measurement collection" run_id=run_mvbolaob_330bd5d49bd5
+00:51:34.860 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:34.885 [task:measure.sample] success (0.0s)
+00:51:34.885 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:34.908 [task:present.render] success (0.0s)
+00:51:34.908 [pipeline] completed "Randomized measurement collection"
+00:51:34.908 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:34.908 [pipeline] Duration: 0.0s
+00:51:34.908 [pipeline] Log: /tmp/tagma-coll-ziIg9b/.tagma/.chat-staging/10728628-db0d-4005-b6a6-f2a8ab474cd1/.trial-cases/empty-hbn5Hl/workspace/.tagma/logs/run_mvbolaob_330bd5d49bd5/pipeline.log
+(pass) actual isolated Trial contrasts randomized object downstream collection with Host-injected empty result [590.45ms]
+(pass) absence fixture Host admission composes fresh source witnesses with controlled replacement while protecting original bytes [11.31ms]
+(pass) absence fixture real Plugin validates fresh generated source and retains original fixture and commit fences [44.50ms]
+00:51:35.305 [pipeline] start "Randomized measurement collection" run_id=run_mvbolb0p_a7e60b5d9811
+00:51:35.306 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:35.333 [task:measure.sample] success (0.0s)
+00:51:35.334 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:35.357 [task:present.render] success (0.0s)
+00:51:35.357 [pipeline] completed "Randomized measurement collection"
+00:51:35.357 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:35.357 [pipeline] Duration: 0.1s
+00:51:35.357 [pipeline] Log: /tmp/tagma-coll-T3jmwj/.tagma/.chat-staging/13735763-359a-4c6a-bf7b-247c844bf607/.trial-cases/normal-3ON6sn/workspace/.tagma/logs/run_mvbolb0p_a7e60b5d9811/pipeline.log
+00:51:35.493 [pipeline] start "Randomized measurement collection" run_id=run_mvbolb5x_74d28443bfee
+00:51:35.494 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:35.518 [task:measure.sample] success (0.0s)
+00:51:35.519 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:35.545 [task:present.render] success (0.0s)
+00:51:35.545 [pipeline] completed "Randomized measurement collection"
+00:51:35.545 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:35.545 [pipeline] Duration: 0.1s
+00:51:35.545 [pipeline] Log: /tmp/tagma-coll-T3jmwj/.tagma/.chat-staging/13735763-359a-4c6a-bf7b-247c844bf607/.trial-cases/empty-OaGcQM/workspace/.tagma/logs/run_mvbolb5x_74d28443bfee/pipeline.log
+(pass) actual isolated Trial preserves array generated source with absence fixture and Host replacement [579.96ms]
+00:51:35.891 [pipeline] start "Randomized measurement collection" run_id=run_mvbolbgz_818f33b15481
+00:51:35.892 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:35.916 [task:measure.sample] success (0.0s)
+00:51:35.917 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:35.941 [task:present.render] success (0.0s)
+00:51:35.941 [pipeline] completed "Randomized measurement collection"
+00:51:35.941 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:35.941 [pipeline] Duration: 0.1s
+00:51:35.941 [pipeline] Log: /tmp/tagma-coll-9ETbhX/.tagma/.chat-staging/b57a567e-63e5-4b7b-83f2-46076faf885e/.trial-cases/normal-UJ3QD4/workspace/.tagma/logs/run_mvbolbgz_818f33b15481/pipeline.log
+00:51:36.077 [pipeline] start "Randomized measurement collection" run_id=run_mvbolbm5_4f23fa3b3fc3
+00:51:36.078 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:36.102 [task:measure.sample] success (0.0s)
+00:51:36.102 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:51:36.124 [task:present.render] success (0.0s)
+00:51:36.124 [pipeline] completed "Randomized measurement collection"
+00:51:36.124 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:36.124 [pipeline] Duration: 0.0s
+00:51:36.124 [pipeline] Log: /tmp/tagma-coll-9ETbhX/.tagma/.chat-staging/b57a567e-63e5-4b7b-83f2-46076faf885e/.trial-cases/empty-w17Hyy/workspace/.tagma/logs/run_mvbolbm5_4f23fa3b3fc3/pipeline.log
+(pass) actual isolated Trial preserves object generated source with absence fixture and Host replacement [579.01ms]
+00:51:36.467 [pipeline] start "Randomized measurement collection" run_id=run_mvbolbwy_5416d5fa4213
+00:51:36.467 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:51:36.490 [task:measure.sample] ERROR: failed exit=0 duration=0.0s
+00:51:36.490 [pipeline] failed "Randomized measurement collection"
+00:51:36.490 [pipeline] Total: 2 | Success: 0 | Failed: 1 | Skipped: 1 | Timeout: 0 | Blocked: 0
+00:51:36.490 [pipeline] Duration: 0.0s
+00:51:36.490 [pipeline] Log: /tmp/tagma-coll-HLVTAe/.tagma/.chat-staging/275d4059-9a78-442b-9009-8da2055d2eb0/.trial-cases/normal-C5plci/workspace/.tagma/logs/run_mvbolbwy_5416d5fa4213/pipeline.log
+(pass) absence fixture cannot authorize replacement without a successfully produced artifact [368.59ms]
+
+ 14 pass
+ 0 fail
+ 315 expect() calls
+Ran 14 tests across 1 file. [4.28s]
+::endgroup::
+
+::group::tests/chat-trial-semantic-review.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-semantic-review.test.ts:
+(pass) independent semantic review binds actual artifact bytes and frozen execution identities [5.19ms]
+(pass) semantic votes distinguish an evidenced artifact defect from an uncertain observation [2.12ms]
+(pass) semantic review never calls a model without actual success and a Host runtime [0.57ms]
+(pass) semantic evidence rejects escaped paths, ancestor links and hardlinks before model access [1.66ms]
+(pass) semantic evidence never transmits partial binary oversized or secret-bearing artifacts [1.81ms]
+(pass) semantic review fails closed on incomplete invented or extra model verdicts [3.32ms]
+(pass) semantic review requires complete provider output and preserves unknown billing outcomes [1.44ms]
+(pass) semantic review rechecks produced and input evidence after the model returns [1.21ms]
+(pass) semantic reviewer deadline aborts the one invocation even when it never settles [12.47ms]
+(pass) semantic reviewer cancellation and caller mutation cannot turn an in-flight review green [1.31ms]
+(pass) reviewer receives the unchanged response limits before one bounded invocation [1.04ms]
+(pass) reviewer response limits keep complete literal evidence strict without truncation coercion or retries [5.32ms]
+
+ 12 pass
+ 0 fail
+ 149 expect() calls
+Ran 12 tests across 1 file. [103.00ms]
+::endgroup::
+
+::group::tests/opencode-deterministic-content-contract.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-deterministic-content-contract.test.ts:
+(pass) seeded author contract assigns exact bytes and digests to deterministic commands without expanding prompt authority [7.46ms]
+(pass) seeded author contract distinguishes managed web routing from ordinary command environments [1.43ms]
+00:51:36.894 [pipeline] start "Exact source bytes with deterministic digest" run_id=run_content_contract_preserved
+00:51:36.899 [task:files.materialize] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs'),c=require('node:crypto');const source=fs.readFileSync('captured.txt');const body=source;fs.writeFileSync('saved.txt',body);fs.writeFileSync('digest.txt',c.createHash('sha256').update(body).digest('hex'));"]
+00:51:36.925 [task:files.materialize] success (0.0s)
+00:51:36.925 [task:files.verify] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","/tmp/tagma-content-contract-HRuila/verify.cjs"]
+00:51:36.951 [task:files.verify] success (0.0s)
+00:51:36.952 [pipeline] completed "Exact source bytes with deterministic digest"
+00:51:36.952 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:36.952 [pipeline] Duration: 0.1s
+00:51:36.952 [pipeline] Log: /tmp/tagma-content-contract-HRuila/.tagma/logs/run_content_contract_preserved/pipeline.log
+(pass) actual SDK deterministic commands preserve multiline Unicode source bytes before hashing [71.62ms]
+00:51:36.955 [pipeline] start "Exact source bytes with deterministic digest" run_id=run_content_contract_truncated
+00:51:36.955 [task:files.materialize] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","-e","const fs=require('node:fs'),c=require('node:crypto');const source=fs.readFileSync('captured.txt');const body=Buffer.from('# Independent sample');fs.writeFileSync('saved.txt',body);fs.writeFileSync('digest.txt',c.createHash('sha256').update(body).digest('hex'));"]
+00:51:36.976 [task:files.materialize] success (0.0s)
+00:51:36.976 [task:files.verify] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","/tmp/tagma-content-contract-i5mXyu/verify.cjs"]
+00:51:37.000 [task:files.verify] ERROR: failed exit=1 duration=0.0s
+00:51:37.000 [task:files.verify] ERROR: stderr tail:
+1 | const fs=require('node:fs'),c=require('node:crypto');const a=fs.readFileSync('captured.txt'),b=fs.readFileSync('saved.txt');const validDigest=c.createHash('sha256').update(b).digest('hex')===fs.readFileSync('digest.txt','utf8');if(!validDigest)throw Error('Digest mismatch');if(!a.equals(b))throw Error('Complete source bytes not preserved');console.log('Complete bytes and digest verified');
+                                                                                                                                                                                                                                                                                                             ^
+error: Complete source bytes not preserved
+      at <anonymous> (/tmp/tagma-content-contract-i5mXyu/verify.cjs:1:298)
+Bun v1.3.14 (Linux x64)
+00:51:37.001 [pipeline] failed "Exact source bytes with deterministic digest"
+00:51:37.001 [pipeline] Total: 2 | Success: 1 | Failed: 1 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:51:37.001 [pipeline] Duration: 0.0s
+00:51:37.001 [pipeline] Log: /tmp/tagma-content-contract-i5mXyu/.tagma/logs/run_content_contract_truncated/pipeline.log
+(pass) actual SDK source-byte check rejects truncated content even with a correct digest [48.05ms]
+
+ 4 pass
+ 0 fail
+ 27 expect() calls
+Ran 4 tests across 1 file. [245.00ms]
+::endgroup::
+
+::group::tests/opencode-seed-document-budget.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-seed-document-budget.test.ts:
+(pass) final seeded pipeline guidance includes all managed policies in every host budget [5.10ms]
+
+ 1 pass
+ 0 fail
+ 49 expect() calls
+Ran 1 test across 1 file. [56.00ms]
+::endgroup::
+
+::group::tests/opencode-trial-semantic-review.test.ts
+bun test v1.3.14 (0d9b296a)
+
+tests/opencode-trial-semantic-review.test.ts:
+(pass) semantic transport uses distinct fresh tool-free sessions and the exact frozen model variant [1.68ms]
+(pass) semantic transport preserves definitive billing rejection without a second model call [0.92ms]
+(pass) semantic transport cancels only its reviewer session through both native drains [0.53ms]
+(pass) semantic transport rejects session conflicts and mismatched response identities [0.36ms]
+(pass) semantic transport does not create an aborted session or expose raw transport errors [0.24ms]
+(pass) semantic transport fails closed before a model call when fixed session metadata cannot be established [0.32ms]
+
+ 6 pass
+ 0 fail
+ 36 expect() calls
+Ran 6 tests across 1 file. [75.00ms]
+::endgroup::

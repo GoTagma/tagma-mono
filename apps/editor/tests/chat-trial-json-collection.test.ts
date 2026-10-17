@@ -30,7 +30,10 @@ import {
   inspectTrialEvidence,
   trialIntentDigest,
 } from '../server/chat-trial-intent-coverage';
-import { TRIAL_EVIDENCE_KINDS } from '../server/chat-trial-resilience-rules';
+import {
+  TRIAL_EVIDENCE_KINDS,
+  createTrialResilienceRules,
+} from '../server/chat-trial-resilience-rules';
 import { evaluateTrialExpectation, trialRunChatYamlStage } from '../server/chat-pipeline-trial-run';
 import { buildTagmaTrialPlanTool } from '../server/opencode-trial-plan-tool';
 import { createChatYamlStage, discardChatYamlStage } from '../server/chat-yaml-staging';
@@ -829,3 +832,289 @@ for (const kind of ['array', 'object'] as const)
       }
     },
   );
+
+function absenceCollectionFixture(kind: Kind) {
+  const h = downstreamCollectionFixture(kind);
+  for (const item of h.plan.cases) {
+    item.fixtures.push({ path: 'lab/data.json', content: null });
+    item.generatedInputPaths = ['lab/data.json'];
+  }
+  h.plan.cases[0]!.expectations.push({
+    type: 'file-source-text-occurrence',
+    path: 'lab/report.json',
+    sourcePath: 'lab/data.json',
+    sourcePointer: labelPointer(kind),
+    producerTaskId: 'measure.sample',
+    consumerTaskId: 'present.render',
+    present: true,
+  });
+  h.plan.cases[1]!.expectations.push({
+    type: 'file-equals',
+    path: 'lab/data.json',
+    text: JSON.stringify({ items: kind === 'array' ? [] : {} }),
+  });
+  const core = h.plan.evidenceReview!.coreWitness!;
+  if (core.status !== 'covered') throw Error('Covered core required');
+  h.plan.evidenceReview = {
+    ...h.plan.evidenceReview!,
+    coreWitness: {
+      ...core,
+      generatedInputs: [
+        {
+          path: 'lab/data.json',
+          producerTaskId: 'measure.sample',
+          consumerTaskId: 'present.render',
+        },
+      ],
+    },
+  };
+  return h;
+}
+
+test('absence fixture Host admission composes fresh source witnesses with controlled replacement while protecting original bytes', () => {
+  const rules = createTrialResilienceRules();
+  for (const kind of ['array', 'object'] as const) {
+    const h = absenceCollectionFixture(kind);
+    const parsed = parseChatPipelineTrialPlan(h.plan);
+    expect(inspectTrialEvidence(['empty-result'], parsed, h.config, h.coordinates, true)).toEqual({
+      missing: [],
+      issues: [],
+    });
+    const context = buildTrialPlanValidationContext(h.config, [], h.coordinates);
+    for (const content of ['', JSON.stringify({ items: ['original bytes'] })]) {
+      const bad = structuredClone(parsed);
+      for (const item of bad.cases)
+        item.fixtures.find((f) => f.path === 'lab/data.json')!.content = content;
+      expect(rules.inspectEvidence(['empty-result'], bad, context.tasks).issues).toContainEqual(
+        expect.objectContaining({ code: 'source-fixture-replacement-forbidden' }),
+      );
+      expect(() => parseChatPipelineTrialPlan(bad)).toThrow();
+    }
+    const mismatched = structuredClone(parsed);
+    mismatched.cases[1]!.fixtures = mismatched.cases[1]!.fixtures.filter(
+      (f) => f.path !== 'lab/data.json',
+    );
+    expect(
+      rules.inspectEvidence(['empty-result'], mismatched, context.tasks).issues,
+    ).toContainEqual(expect.objectContaining({ code: 'normal-inputs-differ' }));
+  }
+});
+
+test('absence fixture real Plugin validates fresh generated source and retains original fixture and commit fences', async () => {
+  for (const kind of ['array', 'object'] as const) {
+    const h = absenceCollectionFixture(kind);
+    const stageRoot = join(h.workDir, '.tagma', '.chat-staging', 'collection-stage');
+    const directory = join(stageRoot, 'agent-workspace', '.tagma');
+    const yamlPath = join(directory, 'lab', 'lab.yaml');
+    mkdirSync(dirname(yamlPath), { recursive: true });
+    writeFileSync(yamlPath, h.yaml);
+    const validationContext = buildTrialPlanValidationContext(h.config, [], h.coordinates);
+    writeFileSync(
+      join(stageRoot, 'stage.json'),
+      JSON.stringify({
+        trialPlanMaxAttempts: 2,
+        trialPlanAttempt: {
+          attemptId: 'collection-attempt',
+          relativePath: 'lab/lab.yaml',
+          yamlHash: h.plan.yamlHash,
+          validationContext: {
+            ...validationContext,
+            version: 2,
+            intentDigest: trialIntentDigest(intent),
+          },
+        },
+      }),
+    );
+    const pluginDir = join(h.workDir, 'node_modules', '@opencode-ai', 'plugin');
+    mkdirSync(dirname(pluginDir), { recursive: true });
+    symlinkSync(
+      dirname(dirname(fileURLToPath(import.meta.resolve('@opencode-ai/plugin')))),
+      pluginDir,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const modulePath = join(h.workDir, 'collection-tool.mjs');
+    writeFileSync(modulePath, buildTagmaTrialPlanTool());
+    const generated = (await import(pathToFileURL(modulePath).href)).default as ToolDefinition;
+    const outer = pluginTool.schema.object(generated.args);
+    const context: ToolContext = {
+      sessionID: 'collection-session',
+      messageID: 'collection-input',
+      agent: 'tagma-trial-planner',
+      directory,
+      worktree: directory,
+      abort: new AbortController().signal,
+      metadata() {},
+      async ask() {
+        throw Error('No permissions allowed');
+      },
+    };
+    const call = async (operation: string, payload: Record<string, unknown> = {}) =>
+      generated.execute(
+        outer.parse({
+          operation,
+          pipeline_path: yamlPath,
+          attempt_id: 'collection-attempt',
+          ...payload,
+        }),
+        context,
+      );
+    await call('begin', { summary: h.plan.summary, goals: h.plan.goals });
+    await call('set-evidence-review', { evidence_review: h.plan.evidenceReview });
+    await call('set-coverage', { coverage: h.plan.coverage });
+    await call('set-findings', { findings: [] });
+    for (const item of h.plan.cases) await call('upsert-case', { case: item });
+    expect(JSON.parse(String(await call('validate'))).valid).toBe(true);
+    for (const content of ['', '{"original":"source"}']) {
+      const bad = structuredClone(h.plan.cases[0]!);
+      bad.fixtures.find((f) => f.path === 'lab/data.json')!.content = content;
+      await expect(call('upsert-case', { case: bad })).rejects.toThrow();
+      expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
+        toolAttemptCount: 0,
+        successfulWriteCount: 0,
+      });
+    }
+    await call('commit');
+    expect(readChatPipelineTrialPlanToolTelemetry(yamlPath, 2)).toMatchObject({
+      toolAttemptCount: 1,
+      validationRejectionCount: 0,
+      successfulWriteCount: 1,
+    });
+    expect(readFileSync(yamlPath, 'utf8')).toBe(h.yaml);
+  }
+});
+
+async function withAbsenceCollectionTrial(
+  kind: Kind,
+  producesArtifact: boolean,
+  check: (
+    h: ReturnType<typeof absenceCollectionFixture>,
+    result: Awaited<ReturnType<typeof trialRunChatYamlStage>>,
+    controlRoot: string,
+  ) => void,
+) {
+  const h = absenceCollectionFixture(kind);
+  if (!producesArtifact)
+    writeFileSync(
+      join(h.folder, 'sample.js'),
+      "process.stdout.write('producer did not create artifact');",
+    );
+  const path = pipelineYamlPath(h.workDir, 'lab');
+  writeFileSync(path, h.yaml);
+  writeFileSync(
+    join(h.workDir, '.tagma', 'editor-settings.json'),
+    JSON.stringify({
+      opencodeChatTrialRunEnabled: true,
+      opencodeChatTrialRunConsentVersion: CHAT_PIPELINE_TRIAL_CONSENT_VERSION,
+    }),
+  );
+  const ws = new WorkspaceState(h.workDir);
+  ws.workDir = h.workDir;
+  ws.yamlPath = path;
+  ws.config = parseYaml(h.yaml);
+  bootstrapBuiltins(ws.registry);
+  const stage = createChatYamlStage(ws, { activePath: path });
+  const entry = stage.entries.find((item) => item.sourcePath === path)!;
+  try {
+    writeFileSync(entry.stagedPath.replace(/\.yaml$/, '.trial-plan.json'), JSON.stringify(h.plan));
+    writeAuthenticatedTrialPlanTelemetry(entry.stagedPath);
+    const controlRoot = join(h.workDir, '.tagma', '.chat-staging', stage.id);
+    const sink = createTrialTaskStreamEvidenceSink(
+      {
+        workspaceTagmaDir: join(h.workDir, '.tagma'),
+        controlRoot,
+        stageId: stage.id,
+        kind: 'stage-metadata',
+      },
+      {
+        workspaceScopeId: 'collection-workspace',
+        operationId: 'collection-operation',
+        operationGeneration: 1,
+        stageId: stage.id,
+      },
+    );
+    const result = await trialRunChatYamlStage(ws, {
+      stageId: stage.id,
+      relativePath: entry.relativePath,
+      trialId: 'absence-collection',
+      taskStreamEvidenceSink: sink,
+      trustedOperationV2: true,
+      intentText: intent,
+    });
+    check(h, result, controlRoot);
+    expect(readFileSync(path, 'utf8')).toBe(h.yaml);
+    expect(existsSync(join(h.folder, 'data.json'))).toBe(false);
+  } finally {
+    discardChatYamlStage(ws, stage.id);
+    ws.watcher.stopWatching();
+    ws.layoutWatcher.stopWatching();
+    await disposeTrialWitnessWorker(ws);
+  }
+}
+
+for (const kind of ['array', 'object'] as const)
+  test(
+    'actual isolated Trial preserves ' +
+      kind +
+      ' generated source with absence fixture and Host replacement',
+    async () => {
+      await withAbsenceCollectionTrial(kind, true, (_h, result, controlRoot) => {
+        expect(result.ran).toBe(true);
+        expect(result.success).toBe(true);
+        expect(result.cases?.map((c) => c.success)).toEqual([true, true]);
+        expect(result.cases?.[0]?.expectations).toContainEqual(
+          expect.objectContaining({ type: 'file-source-text-occurrence', passed: true }),
+        );
+        expect(result.cases?.[1]?.expectations).toContainEqual(
+          expect.objectContaining({ type: 'controlled-fault-evidence', passed: true }),
+        );
+        type Reading = { label: string; nonce: string };
+        type Readings = Reading[] | Record<string, Reading>;
+        const outputs = new Map<string, { items?: Readings; readings?: Readings }>();
+        let streams = 0;
+        for (const item of result.taskStreamEvidence ?? [])
+          for (const stream of item.streams ?? []) {
+            expect(stream.state).toBe('complete');
+            expect(stream.hash).toMatch(/^[a-f0-9]{64}$/);
+            const raw = readFileSync(join(controlRoot, '.trial-streams', stream.hash! + '.utf8'));
+            expect(createHash('sha256').update(raw).digest('hex')).toBe(stream.hash!);
+            streams++;
+            if (stream.stream === 'stdout')
+              outputs.set(item.caseId + '/' + item.taskId, JSON.parse(raw.toString()));
+          }
+        expect(streams).toBe(8);
+        expect(outputs.get('normal/present.render')!.readings).toEqual(
+          outputs.get('normal/measure.sample')!.items,
+        );
+        expect(outputs.get('empty/present.render')!.readings).toEqual(kind === 'array' ? [] : {});
+        const data = outputs.get('normal/measure.sample')!.items!;
+        const first = Array.isArray(data) ? data[0]! : data.entry!;
+        expect(first.label).toBe(label);
+        expect(first.nonce).toMatch(/^[a-f0-9-]{36}$/);
+      });
+    },
+  );
+
+test('absence fixture cannot authorize replacement without a successfully produced artifact', async () => {
+  await withAbsenceCollectionTrial('array', false, (_h, result, controlRoot) => {
+    expect(result.ran).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.caseResultCount).toBe(1);
+    expect(result.notRunCaseCount).toBe(1);
+    expect(result.cases?.map((c) => c.id)).toEqual(['normal']);
+    expect(
+      result.cases?.flatMap((c) =>
+        c.expectations.filter((e) => e.type === 'controlled-fault-evidence'),
+      ),
+    ).toHaveLength(0);
+    expect(result.taskStreamEvidence?.every((item) => item.caseId === 'normal')).toBe(true);
+    expect(result.cases?.[0]?.expectations).toContainEqual(
+      expect.objectContaining({ type: 'task-status', passed: false }),
+    );
+    const producer = result.taskStreamEvidence?.find((item) => item.taskId === 'measure.sample');
+    const stdout = producer?.streams?.find((s) => s.stream === 'stdout');
+    expect(stdout?.state).toBe('complete');
+    const raw = readFileSync(join(controlRoot, '.trial-streams', stdout!.hash! + '.utf8'));
+    expect(raw.toString()).toBe('producer did not create artifact');
+    expect(createHash('sha256').update(raw).digest('hex')).toBe(stdout!.hash!);
+  });
+});

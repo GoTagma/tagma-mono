@@ -1218,7 +1218,7 @@ export function createTrialResilienceRules() {
                   'fault.path',
                   'Bind the generated artifact to the producer completion path.',
                 );
-              if (c.fixtures.some((item) => item.path === f.path))
+              if (c.fixtures.some((item) => item.path === f.path && item.content !== null))
                 fail(
                   'source-fixture-replacement-forbidden',
                   'fault.path',

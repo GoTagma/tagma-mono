@@ -1,0 +1,57 @@
+bun test v1.3.14 (0d9b296a)
+
+tests/chat-trial-json-collection.test.ts:
+(pass) absence fixture Host admission composes fresh source witnesses with controlled replacement while protecting original bytes [19.44ms]
+(pass) absence fixture real Plugin validates fresh generated source and retains original fixture and commit fences [80.15ms]
+00:50:44.596 [pipeline] start "Randomized measurement collection" run_id=run_mvbok7w0_4717cde185c2
+00:50:44.602 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:50:44.632 [task:measure.sample] success (0.0s)
+00:50:44.633 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:50:44.656 [task:present.render] success (0.0s)
+00:50:44.657 [pipeline] completed "Randomized measurement collection"
+00:50:44.657 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:50:44.657 [pipeline] Duration: 0.1s
+00:50:44.657 [pipeline] Log: /tmp/tagma-coll-OmposE/.tagma/.chat-staging/db9a4f52-4685-4ade-92af-d1b70b070565/.trial-cases/normal-vFzJIF/workspace/.tagma/logs/run_mvbok7w0_4717cde185c2/pipeline.log
+00:50:44.798 [pipeline] start "Randomized measurement collection" run_id=run_mvbok81p_7e5b6133c17e
+00:50:44.799 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:50:44.822 [task:measure.sample] success (0.0s)
+00:50:44.823 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:50:44.851 [task:present.render] success (0.0s)
+00:50:44.851 [pipeline] completed "Randomized measurement collection"
+00:50:44.851 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:50:44.851 [pipeline] Duration: 0.1s
+00:50:44.851 [pipeline] Log: /tmp/tagma-coll-OmposE/.tagma/.chat-staging/db9a4f52-4685-4ade-92af-d1b70b070565/.trial-cases/empty-bDsdQT/workspace/.tagma/logs/run_mvbok81p_7e5b6133c17e/pipeline.log
+(pass) actual isolated Trial preserves array generated source with absence fixture and Host replacement [629.25ms]
+00:50:45.186 [pipeline] start "Randomized measurement collection" run_id=run_mvbok8ch_98914dd896e8
+00:50:45.186 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:50:45.210 [task:measure.sample] success (0.0s)
+00:50:45.210 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:50:45.234 [task:present.render] success (0.0s)
+00:50:45.234 [pipeline] completed "Randomized measurement collection"
+00:50:45.234 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:50:45.234 [pipeline] Duration: 0.0s
+00:50:45.234 [pipeline] Log: /tmp/tagma-coll-f51XwY/.tagma/.chat-staging/24ce66f1-b9ce-4ac4-b5d0-5e279348bce5/.trial-cases/normal-ZWpjYG/workspace/.tagma/logs/run_mvbok8ch_98914dd896e8/pipeline.log
+00:50:45.371 [pipeline] start "Randomized measurement collection" run_id=run_mvbok8hm_3bad3d74fc09
+00:50:45.371 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:50:45.398 [task:measure.sample] success (0.0s)
+00:50:45.398 [task:present.render] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","render.js"]
+00:50:45.422 [task:present.render] success (0.0s)
+00:50:45.422 [pipeline] completed "Randomized measurement collection"
+00:50:45.422 [pipeline] Total: 2 | Success: 2 | Failed: 0 | Skipped: 0 | Timeout: 0 | Blocked: 0
+00:50:45.422 [pipeline] Duration: 0.1s
+00:50:45.422 [pipeline] Log: /tmp/tagma-coll-f51XwY/.tagma/.chat-staging/24ce66f1-b9ce-4ac4-b5d0-5e279348bce5/.trial-cases/empty-3yVvJU/workspace/.tagma/logs/run_mvbok8hm_3bad3d74fc09/pipeline.log
+(pass) actual isolated Trial preserves object generated source with absence fixture and Host replacement [569.59ms]
+00:50:45.754 [pipeline] start "Randomized measurement collection" run_id=run_mvbok8sa_81f783826e63
+00:50:45.755 [task:measure.sample] running: ["/workspace/.cloud-tools/node_modules/bun/bin/bun.exe","sample.js"]
+00:50:45.778 [task:measure.sample] ERROR: failed exit=0 duration=0.0s
+00:50:45.779 [pipeline] failed "Randomized measurement collection"
+00:50:45.779 [pipeline] Total: 2 | Success: 0 | Failed: 1 | Skipped: 1 | Timeout: 0 | Blocked: 0
+00:50:45.779 [pipeline] Duration: 0.0s
+00:50:45.779 [pipeline] Log: /tmp/tagma-coll-q5hB9z/.tagma/.chat-staging/7a082713-8de8-47ff-a484-1db0e2a47ceb/.trial-cases/normal-rs6C89/workspace/.tagma/logs/run_mvbok8sa_81f783826e63/pipeline.log
+(pass) absence fixture cannot authorize replacement without a successfully produced artifact [354.77ms]
+
+ 5 pass
+ 9 filtered out
+ 0 fail
+ 111 expect() calls
+Ran 5 tests across 1 file. [1.80s]
